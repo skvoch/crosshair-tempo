@@ -86,6 +86,16 @@ class CrosshairSettingsWindowTests(unittest.TestCase):
         self.window._activate_page("settings")
         self.assertGreaterEqual(self.window.monitor_picker.count(), 1)
 
+    def test_movement_control_uses_moving_preview_then_returns_to_standing(self):
+        moving_size = self.window.crosshair_controls["moving_size"][0]
+
+        moving_size.sliderPressed.emit()
+        self.assertEqual(self.window.preview.displayed_state().speed_ratio, 1.0)
+
+        moving_size.sliderReleased.emit()
+        self.window._reset_preview_context()
+        self.assertEqual(self.window.preview.displayed_state().movement, MovementState.STANDING)
+
 
 if __name__ == "__main__":
     unittest.main()

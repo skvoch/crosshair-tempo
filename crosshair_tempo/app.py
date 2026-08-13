@@ -10,7 +10,7 @@ if __package__ in {None, ""}:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from crosshair_tempo.input_tracker import InputTracker, cs2_is_foreground
     from crosshair_tempo.icons import icon as app_icon
-    from crosshair_tempo.models import Settings
+    from crosshair_tempo.models import CrosshairState, MovementState, Settings
     from crosshair_tempo.overlay import CrosshairOverlay
     from crosshair_tempo.crosshair_profiles import CrosshairProfile, CrosshairProfileStore, apply_profile, export_share_code, import_share_code, update_profile_from_settings
     from crosshair_tempo.settings_store import load_settings, save_settings
@@ -19,7 +19,7 @@ if __package__ in {None, ""}:
 else:
     from .input_tracker import InputTracker, cs2_is_foreground
     from .icons import icon as app_icon
-    from .models import Settings
+    from .models import CrosshairState, MovementState, Settings
     from .overlay import CrosshairOverlay
     from .crosshair_profiles import CrosshairProfile, CrosshairProfileStore, apply_profile, export_share_code, import_share_code, update_profile_from_settings
     from .settings_store import load_settings, save_settings
@@ -59,16 +59,29 @@ class CrosshairPreview(QWidget):
         super().__init__()
         self.settings = settings
         self.get_state = get_state
+        self._context_state = CrosshairState(MovementState.STANDING)
         self.setMinimumHeight(210)
         self.setObjectName("preview")
         self.refresh_timer = QTimer(self)
         self.refresh_timer.timeout.connect(self.update)
         self.refresh_timer.start(16)
 
+    def show_context(self, context: str) -> None:
+        states = {
+            "standing": CrosshairState(MovementState.STANDING),
+            "moving": CrosshairState(MovementState.MOVING_RIGHT, progress=1.0, speed_ratio=1.0),
+            "marker": CrosshairState(MovementState.STANDING, marker_active=True, direction_change_marker=True),
+        }
+        self._context_state = states[context]
+        self.update()
+
+    def displayed_state(self) -> CrosshairState:
+        return self._context_state
+
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         center = QPointF(self.width() / 2, self.height() / 2)
-        state = self.get_state()
+        state = self.displayed_state()
         max_radius = self.settings.moving_size / 2
         min_radius = self.settings.standing_size / 2
         radius = min_radius + (max_radius - min_radius) * state.progress
@@ -253,6 +266,10 @@ class SettingsWindow(FluentWindow):
         apply_profile(self.settings, self.active_profile)
         self.save()
         self.preview: CrosshairPreview | None = None
+        self.preview_reset_timer = QTimer(self)
+        self.preview_reset_timer.setSingleShot(True)
+        self.preview_reset_timer.setInterval(240)
+        self.preview_reset_timer.timeout.connect(self._reset_preview_context)
         self.crosshair_controls: dict[str, tuple[Slider, QLabel, str, QLabel]] = {}
         self.cross_only_widgets: list[QWidget] = []
         self.profile_list: QVBoxLayout | None = None
@@ -569,15 +586,15 @@ class SettingsWindow(FluentWindow):
         self.outline_colour_button.clicked.connect(self._choose_outline_colour)
         appearance.layout.addWidget(self.outline_colour_button)
         self._refresh_outline_colour_button()
-        preview_card = Panel("Live preview", "The same shape and colour used by the overlay.")
+        preview_card = Panel("Preview", "Updates automatically for the control you are editing.")
         self.preview = CrosshairPreview(self.settings, self.get_crosshair_state)
         preview_card.layout.addWidget(self.preview)
         top.addWidget(appearance, 1)
         top.addWidget(preview_card, 2)
         editor.addLayout(top)
         sizing = Panel("Size & visibility")
-        sizing.layout.addWidget(self._setting_slider("Standing size", self.settings.standing_size, self._set_standing_size, 1 if self.settings.crosshair_shape == "dot" else 6, 32, " px", "standing_size"))
-        sizing.layout.addWidget(self._setting_slider("Moving size", self.settings.moving_size, self._set_moving_size, 3 if self.settings.crosshair_shape == "dot" else 24, 120, " px", "moving_size"))
+        sizing.layout.addWidget(self._setting_slider("Standing size", self.settings.standing_size, self._set_standing_size, 1 if self.settings.crosshair_shape == "dot" else 6, 32, " px", "standing_size", "standing"))
+        sizing.layout.addWidget(self._setting_slider("Moving size", self.settings.moving_size, self._set_moving_size, 3 if self.settings.crosshair_shape == "dot" else 24, 120, " px", "moving_size", "moving"))
         sizing.layout.addWidget(self._setting_slider("Opacity", self.settings.opacity, self._set_opacity, 20, 100, " %", "opacity"))
         self.outline_switch = SwitchButton("Outline")
         self.outline_switch.setChecked(self.settings.crosshair_outline)
@@ -585,7 +602,7 @@ class SettingsWindow(FluentWindow):
         sizing.layout.addWidget(self.outline_switch)
         sizing.layout.addWidget(self._setting_slider("Outline thickness", self.settings.crosshair_outline_thickness, self._set_crosshair_outline_thickness, 1, 4, " px", "crosshair_outline_thickness"))
         line_thickness = self._setting_slider("Line thickness", self.settings.crosshair_thickness, self._set_crosshair_thickness, 1, 8, " px", "crosshair_thickness")
-        line_gap = self._setting_slider("Line gap", self.settings.crosshair_gap, self._set_crosshair_gap, 0, 30, " px", "crosshair_gap")
+        line_gap = self._setting_slider("Line gap", self.settings.crosshair_gap, self._set_crosshair_gap, 0, 30, " px", "crosshair_gap", "moving")
         rotation = self._rotation_slider()
         self.cross_only_widgets = [line_thickness, line_gap, rotation]
         for widget in self.cross_only_widgets:
@@ -648,7 +665,7 @@ class SettingsWindow(FluentWindow):
         if screen_name:
             self.set_overlay_screen(screen_name)
 
-    def _setting_slider(self, label: str, value: int, handler, low: int, high: int, suffix: str, setting_key: str | None = None) -> QWidget:
+    def _setting_slider(self, label: str, value: int, handler, low: int, high: int, suffix: str, setting_key: str | None = None, preview_context: str = "standing") -> QWidget:
         container = QWidget()
         box = QVBoxLayout(container)
         box.setContentsMargins(0, 8, 0, 5)
@@ -662,7 +679,16 @@ class SettingsWindow(FluentWindow):
         slider = ScrollSafeSlider(Qt.Orientation.Horizontal)
         slider.setRange(low, high)
         slider.setValue(value)
-        slider.valueChanged.connect(lambda current: (handler(current), value_label.setText(f"{current}{suffix}")))
+        def update_value(current: int) -> None:
+            handler(current)
+            value_label.setText(f"{current}{suffix}")
+            if slider.hasFocus() and not slider.isSliderDown():
+                self._show_preview_context(preview_context)
+                self._schedule_preview_reset()
+
+        slider.valueChanged.connect(update_value)
+        slider.sliderPressed.connect(lambda: self._show_preview_context(preview_context))
+        slider.sliderReleased.connect(self._schedule_preview_reset)
         if setting_key:
             self.crosshair_controls[setting_key] = (slider, value_label, suffix, title_label)
         box.addLayout(header)
@@ -686,6 +712,8 @@ class SettingsWindow(FluentWindow):
         slider.setTickPosition(Slider.TickPosition.TicksBelow)
         slider.setTickInterval(1)
         slider.setValue(min(range(len(angles)), key=lambda index: abs(angles[index] - self.settings.crosshair_rotation)))
+        slider.sliderPressed.connect(lambda: self._show_preview_context("standing"))
+        slider.sliderReleased.connect(self._schedule_preview_reset)
         slider.valueChanged.connect(lambda index: (self._set_crosshair_rotation(angles[index]), value_label.setText(f"{angles[index]}°")))
         box.addLayout(header)
         box.addWidget(slider)
@@ -709,18 +737,21 @@ class SettingsWindow(FluentWindow):
         self._update_preview()
 
     def _choose_colour(self) -> None:
+        self._show_preview_context("standing")
         colour = QColorDialog.getColor(QColor(self.settings.crosshair_color), self, "Crosshair colour")
         if colour.isValid():
             self.settings.crosshair_color = colour.name()
             self._appearance_changed()
             self._refresh_colour_button()
             self._update_preview()
+        self._schedule_preview_reset()
 
     def _refresh_colour_button(self) -> None:
         self.colour_button.setText(self.settings.crosshair_color.upper())
         self.colour_button.setStyleSheet(f"background: {self.settings.crosshair_color}; color: #101214;")
 
     def _choose_marker_colour(self) -> None:
+        self._show_preview_context("marker")
         colour = QColorDialog.getColor(QColor(self.settings.marker_color), self, "Movement marker colour")
         if colour.isValid():
             self.settings.marker_color = colour.name()
@@ -728,14 +759,17 @@ class SettingsWindow(FluentWindow):
             self._refresh_marker_colour_button()
             self._refresh_movement_marker()
             self._update_preview()
+        self._schedule_preview_reset()
 
     def _choose_outline_colour(self) -> None:
+        self._show_preview_context("standing")
         colour = QColorDialog.getColor(QColor(self.settings.crosshair_outline_color), self, "Outline colour")
         if colour.isValid():
             self.settings.crosshair_outline_color = colour.name()
             self._appearance_changed()
             self._refresh_outline_colour_button()
             self._update_preview()
+        self._schedule_preview_reset()
 
     def _refresh_marker_colour_button(self) -> None:
         self.marker_colour_button.setText(f"MARKER {self.settings.marker_color.upper()}")
@@ -752,6 +786,18 @@ class SettingsWindow(FluentWindow):
     def _update_preview(self) -> None:
         if self.preview:
             self.preview.update()
+
+    def _show_preview_context(self, context: str) -> None:
+        self.preview_reset_timer.stop()
+        if self.preview:
+            self.preview.show_context(context)
+
+    def _schedule_preview_reset(self) -> None:
+        self.preview_reset_timer.start()
+
+    def _reset_preview_context(self) -> None:
+        if self.preview:
+            self.preview.show_context("standing")
 
     def _appearance_changed(self) -> None:
         update_profile_from_settings(self.active_profile, self.settings)
