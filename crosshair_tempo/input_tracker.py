@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import ctypes
-from queue import SimpleQueue
 from typing import Callable
 
 from pynput import keyboard
+from PySide6.QtCore import QObject, Signal
 
 
 def cs2_is_foreground() -> bool:
@@ -16,12 +16,16 @@ def cs2_is_foreground() -> bool:
     return "counter-strike 2" in title.value.lower()
 
 
-class InputTracker:
+class InputTracker(QObject):
     """Read movement keys locally without modifying or replaying input."""
 
+    # pynput invokes callbacks from its own listener thread. Qt queues this
+    # signal back to the application thread, so no polling loop is needed.
+    input_event = Signal(str, object)
+
     def __init__(self, should_track: Callable[[], bool]) -> None:
+        super().__init__()
         self._should_track = should_track
-        self.events: SimpleQueue[tuple[str, str | None]] = SimpleQueue()
         self._listener: keyboard.Listener | None = None
 
     def start(self) -> None:
@@ -35,16 +39,16 @@ class InputTracker:
 
     def _pressed(self, key: keyboard.Key | keyboard.KeyCode) -> None:
         if key == keyboard.Key.f8:
-            self.events.put(("toggle", None))
+            self.input_event.emit("toggle", None)
             return
         movement_key = self._movement_key(key)
         if movement_key and self._should_track():
-            self.events.put(("press", movement_key))
+            self.input_event.emit("press", movement_key)
 
     def _released(self, key: keyboard.Key | keyboard.KeyCode) -> None:
         movement_key = self._movement_key(key)
         if movement_key and self._should_track():
-            self.events.put(("release", movement_key))
+            self.input_event.emit("release", movement_key)
 
     @staticmethod
     def _movement_key(key: keyboard.Key | keyboard.KeyCode) -> str | None:
