@@ -9,6 +9,17 @@ from PySide6.QtWidgets import QWidget
 from .models import CrosshairState, Settings
 
 
+def select_overlay_screen(screens, primary_screen, configured_name: str):
+    """Resolve the configured display, with a safe primary-display fallback."""
+    if not screens:
+        return None
+    if configured_name:
+        selected = next((screen for screen in screens if screen.name() == configured_name), None)
+        if selected is not None:
+            return selected
+    return primary_screen or screens[0]
+
+
 class CrosshairOverlay(QWidget):
     def __init__(self, get_state, settings: Settings) -> None:
         super().__init__(None)
@@ -30,14 +41,7 @@ class CrosshairOverlay(QWidget):
 
     def _target_screen(self):
         screens = QGuiApplication.screens()
-        if not screens:
-            return None
-        configured_name = self.settings.overlay_screen
-        if configured_name:
-            selected = next((screen for screen in screens if screen.name() == configured_name), None)
-            if selected is not None:
-                return selected
-        return QGuiApplication.primaryScreen() or screens[0]
+        return select_overlay_screen(screens, QGuiApplication.primaryScreen(), self.settings.overlay_screen)
 
     def sync_screen(self) -> None:
         """Resize the click-through window to the selected display.
