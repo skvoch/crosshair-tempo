@@ -32,6 +32,7 @@ class CrosshairState:
 class Settings:
     overlay_enabled: bool = True
     only_cs2_focused: bool = True
+    start_with_windows: bool = False
     hotkey: str = "F8"
     opacity: int = 100
     moving_size: int = 44
@@ -43,6 +44,7 @@ class Settings:
     crosshair_thickness: int = 2
     crosshair_gap: int = 7
     crosshair_outline: bool = False
+    crosshair_outline_color: str = "#0B0D0F"
     crosshair_outline_thickness: int = 1
     center_dot: bool = False
     center_dot_size: int = 3

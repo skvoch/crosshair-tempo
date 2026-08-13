@@ -15,6 +15,7 @@ if __package__ in {None, ""}:
     from crosshair_tempo.crosshair_profiles import CrosshairProfile, CrosshairProfileStore, apply_profile, export_share_code, import_share_code, update_profile_from_settings
     from crosshair_tempo.settings_store import load_settings, save_settings
     from crosshair_tempo.timing import MovementFeedbackEngine
+    from crosshair_tempo.windows_startup import set_start_with_windows
 else:
     from .input_tracker import InputTracker, cs2_is_foreground
     from .icons import icon as app_icon
@@ -23,6 +24,7 @@ else:
     from .crosshair_profiles import CrosshairProfile, CrosshairProfileStore, apply_profile, export_share_code, import_share_code, update_profile_from_settings
     from .settings_store import load_settings, save_settings
     from .timing import MovementFeedbackEngine
+    from .windows_startup import set_start_with_windows
 
 from PySide6.QtCore import QObject, Qt, QPointF, QProcess, QRect, QRectF, QSize, QTimer, Signal, Slot
 
@@ -79,7 +81,7 @@ class CrosshairPreview(QWidget):
         alpha = round(255 * self.settings.opacity / 100)
         colour = QColor(self.settings.marker_color) if state.marker_active else QColor(self.settings.crosshair_color)
         colour.setAlpha(alpha)
-        outline_colour = QColor("#0B0D0F")
+        outline_colour = QColor(self.settings.crosshair_outline_color)
         outline_colour.setAlpha(alpha)
         if state.marker_active:
             marker_radius = max(4, self.settings.crosshair_thickness * 2)
@@ -214,7 +216,7 @@ class ShapeChoiceButton(QPushButton):
 
 
 class SettingsWindow(FluentWindow):
-    def __init__(self, settings: Settings, get_crosshair_state, toggle_overlay, save, sync_overlay, quit_app, restart_app, profile_store: CrosshairProfileStore) -> None:
+    def __init__(self, settings: Settings, get_crosshair_state, toggle_overlay, save, sync_overlay, quit_app, restart_app, profile_store: CrosshairProfileStore, set_autostart=None) -> None:
         super().__init__()
         self.settings = settings
         self.get_crosshair_state = get_crosshair_state
@@ -223,6 +225,7 @@ class SettingsWindow(FluentWindow):
         self.sync_overlay = sync_overlay
         self.quit_app = quit_app
         self.restart_app = restart_app
+        self.set_autostart = set_autostart or (lambda _enabled: None)
         self.profile_store = profile_store
         self.profiles = self.profile_store.load_all(settings)
         self.active_profile = next((profile for profile in self.profiles if profile.id == settings.active_crosshair_profile), self.profiles[0])
@@ -495,6 +498,10 @@ class SettingsWindow(FluentWindow):
         self.marker_colour_button.clicked.connect(self._choose_marker_colour)
         appearance.layout.addWidget(self.marker_colour_button)
         self._refresh_marker_colour_button()
+        self.outline_colour_button = PushButton("Choose outline colour")
+        self.outline_colour_button.clicked.connect(self._choose_outline_colour)
+        appearance.layout.addWidget(self.outline_colour_button)
+        self._refresh_outline_colour_button()
         preview_card = Panel("Live preview", "The same shape and colour used by the overlay.")
         self.preview = CrosshairPreview(self.settings, self.get_crosshair_state)
         preview_card.layout.addWidget(self.preview)
@@ -537,6 +544,12 @@ class SettingsWindow(FluentWindow):
         layout.insertLayout(layout.count() - 1, workspace)
 
     def _build_overlay(self, layout: QVBoxLayout) -> None:
+        startup = Panel("Startup", "Optionally open Crosshair Tempo when you sign in to Windows.")
+        self.autostart = SwitchButton("Start with Windows")
+        self.autostart.setChecked(self.settings.start_with_windows)
+        self.autostart.checkedChanged.connect(self.set_autostart)
+        startup.layout.addWidget(self.autostart)
+        layout.insertWidget(layout.count() - 1, startup)
         hotkey = Panel("Quick controls", "F8 toggles the overlay from any app. Closing this window exits Crosshair Tempo.")
         button = PushButton("Hide window to tray")
         button.clicked.connect(self.hide)
@@ -636,9 +649,21 @@ class SettingsWindow(FluentWindow):
             self._refresh_movement_marker()
             self._update_preview()
 
+    def _choose_outline_colour(self) -> None:
+        colour = QColorDialog.getColor(QColor(self.settings.crosshair_outline_color), self, "Outline colour")
+        if colour.isValid():
+            self.settings.crosshair_outline_color = colour.name()
+            self._appearance_changed()
+            self._refresh_outline_colour_button()
+            self._update_preview()
+
     def _refresh_marker_colour_button(self) -> None:
         self.marker_colour_button.setText(f"MARKER {self.settings.marker_color.upper()}")
         self.marker_colour_button.setStyleSheet(f"background: {self.settings.marker_color}; color: #101214;")
+
+    def _refresh_outline_colour_button(self) -> None:
+        self.outline_colour_button.setText(f"OUTLINE {self.settings.crosshair_outline_color.upper()}")
+        self.outline_colour_button.setStyleSheet(f"background: {self.settings.crosshair_outline_color}; color: #f4f6f8;")
 
     def _refresh_movement_marker(self) -> None:
         if self.movement_marker:
@@ -696,6 +721,7 @@ class SettingsWindow(FluentWindow):
             button.setChecked(self.settings.crosshair_shape == name)
         self._refresh_colour_button()
         self._refresh_marker_colour_button()
+        self._refresh_outline_colour_button()
         self._refresh_movement_marker()
         self.center_dot_switch.blockSignals(True)
         self.center_dot_switch.setChecked(self.settings.center_dot)
@@ -885,7 +911,7 @@ class CrosshairTempoApp(QObject):
         apply_profile(self.settings, selected_profile)
         self.engine = MovementFeedbackEngine(self.settings)
         self.overlay = CrosshairOverlay(self.engine.snapshot, self.settings)
-        self.window = SettingsWindow(self.settings, self.engine.snapshot, self.set_overlay_enabled, self._save_settings, self._sync_overlay_visibility, self.quit, self.restart, self.profile_store)
+        self.window = SettingsWindow(self.settings, self.engine.snapshot, self.set_overlay_enabled, self._save_settings, self._sync_overlay_visibility, self.quit, self.restart, self.profile_store, self.set_autostart)
         self.tracker = InputTracker(self.should_track)
         self.tracker.input_event.connect(self._consume_input_event)
         self.focus_timer = QTimer()
@@ -916,6 +942,15 @@ class CrosshairTempoApp(QObject):
         self.window.enabled.blockSignals(False)
         self._sync_overlay_visibility()
         self._save_settings()
+
+    def set_autostart(self, enabled: bool) -> None:
+        if set_start_with_windows(enabled):
+            self.settings.start_with_windows = enabled
+            self._save_settings()
+            return
+        self.window.autostart.blockSignals(True)
+        self.window.autostart.setChecked(self.settings.start_with_windows)
+        self.window.autostart.blockSignals(False)
 
     def _sync_overlay_visibility(self) -> None:
         self.overlay.setVisible(self.settings.overlay_enabled and self.should_track())

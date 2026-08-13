@@ -50,7 +50,7 @@ class CrosshairOverlay(QWidget):
         alpha = round(255 * self.settings.opacity / 100)
         colour = QColor(self.settings.marker_color) if state.marker_active else QColor(self.settings.crosshair_color)
         colour.setAlpha(alpha)
-        outline_colour = QColor("#0B0D0F")
+        outline_colour = QColor(self.settings.crosshair_outline_color)
         outline_colour.setAlpha(alpha)
         painter = QPainter(self)
         # Both the outline and dot use this exact logical centre. QPoint-based
