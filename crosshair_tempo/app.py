@@ -24,7 +24,7 @@ else:
     from .settings_store import load_settings, save_settings
     from .timing import MovementFeedbackEngine
 
-from PySide6.QtCore import Qt, QPointF, QProcess, QRect, QRectF, QSize, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QPointF, QProcess, QRect, QRectF, QSize, QTimer, Signal, Slot
 
 from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPen
 from PySide6.QtCore import QUrl
@@ -867,8 +867,9 @@ class SettingsWindow(FluentWindow):
         event.accept()
         self.quit_app()
 
-class CrosshairTempoApp:
+class CrosshairTempoApp(QObject):
     def __init__(self) -> None:
+        super().__init__()
         if sys.platform == "win32":
             # Give Windows a stable identity so its taskbar/Start integration
             # can associate a Crosshair Tempo shortcut with this running app.
@@ -886,9 +887,7 @@ class CrosshairTempoApp:
         self.overlay = CrosshairOverlay(self.engine.snapshot, self.settings)
         self.window = SettingsWindow(self.settings, self.engine.snapshot, self.set_overlay_enabled, self._save_settings, self._sync_overlay_visibility, self.quit, self.restart, self.profile_store)
         self.tracker = InputTracker(self.should_track)
-        self.input_timer = QTimer()
-        self.input_timer.timeout.connect(self._consume_input_events)
-        self.input_timer.start(4)
+        self.tracker.input_event.connect(self._consume_input_event)
         self.focus_timer = QTimer()
         self.focus_timer.timeout.connect(self._sync_overlay_visibility)
         self.focus_timer.start(250)
@@ -901,15 +900,14 @@ class CrosshairTempoApp:
     def _save_settings(self) -> None:
         save_settings(self.settings)
 
-    def _consume_input_events(self) -> None:
-        while not self.tracker.events.empty():
-            kind, key = self.tracker.events.get()
-            if kind == "press":
-                self.engine.on_key_press(key)
-            elif kind == "release":
-                self.engine.on_key_release(key)
-            else:
-                self.toggle_overlay()
+    @Slot(str, object)
+    def _consume_input_event(self, kind: str, key: str | None) -> None:
+        if kind == "press" and key is not None:
+            self.engine.on_key_press(key)
+        elif kind == "release" and key is not None:
+            self.engine.on_key_release(key)
+        elif kind == "toggle":
+            self.toggle_overlay()
 
     def set_overlay_enabled(self, enabled: bool) -> None:
         self.settings.overlay_enabled = enabled
