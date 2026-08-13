@@ -15,6 +15,7 @@ class MovementFeedbackEngineTests(unittest.TestCase):
         self.assertEqual(state.movement, MovementState.MOVING_LEFT)
         self.assertEqual(self.engine.velocity, -200)
         self.assertEqual(state.progress, 1.0)
+        self.assertEqual(state.estimated_speed, 200)
 
     def test_release_slows_down_with_friction(self):
         self.engine.on_key_press("A", 1.0)

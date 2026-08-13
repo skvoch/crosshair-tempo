@@ -114,6 +114,7 @@ class CrosshairOverlay(QWidget):
             dot_size = self._centred_dot_size(self.settings.center_dot_size, minimum=3)
             dot_radius = dot_size / 2
             painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))
+            self._draw_speed_debug(painter, center, state)
             return
         if self.settings.crosshair_shape == "cross":
             # Cross arms stay fixed; movement is represented by widening the
@@ -175,3 +176,30 @@ class CrosshairOverlay(QWidget):
                 painter.setBrush(outline_colour)
                 painter.drawEllipse(QRectF(center.x() - outline_radius, center.y() - outline_radius, outline_size, outline_size))
             painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))
+        self._draw_speed_debug(painter, center, state)
+
+    def _draw_speed_debug(self, painter: QPainter, center: QPointF, state: CrosshairState) -> None:
+        if not self.settings.show_estimated_speed:
+            return
+        label = f"EST {round(state.estimated_speed)} u/s"
+        font = painter.font()
+        font.setPixelSize(12)
+        font.setBold(True)
+        painter.save()
+        painter.setFont(font)
+        width = painter.fontMetrics().horizontalAdvance(label) + 14
+        if self.settings.crosshair_shape == "cross":
+            arm_length = max(round(self.settings.standing_size / 2), self.settings.crosshair_thickness + 2)
+            movement_spread = max(0, (self.settings.moving_size - self.settings.standing_size) / 2)
+            extent = self.settings.crosshair_gap + movement_spread + arm_length
+        else:
+            extent = self.settings.moving_size / 2
+        rect = QRectF(center.x() + extent + 10, center.y() - 11, width, 22)
+        background = QColor("#101214")
+        background.setAlpha(205)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(background)
+        painter.drawRoundedRect(rect, 5, 5)
+        painter.setPen(QColor("#F1F4F7"))
+        painter.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
+        painter.restore()

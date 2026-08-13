@@ -57,11 +57,11 @@ class MovementFeedbackEngine:
         if self._marker_at is not None:
             if (now - self._marker_at) * 1000 <= self.MARKER_HOLD_MS:
                 return CrosshairState(MovementState.STANDING, 0.0, True, self._direction_change_marker,
-                                      self._is_crouching(), self._speed_ratio())
+                                      self._is_crouching(), self._speed_ratio(), self._speed())
             self._marker_at = None
             self._direction_change_marker = False
         return CrosshairState(self._movement_state(), self._movement_progress(), False, False,
-                              self._is_crouching(), self._speed_ratio())
+                              self._is_crouching(), self._speed_ratio(), self._speed())
 
     def _advance(self, now: float) -> None:
         if self._last_update is None:

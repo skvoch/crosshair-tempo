@@ -26,12 +26,14 @@ class CrosshairState:
     direction_change_marker: bool = False
     crouching: bool = False
     speed_ratio: float = 0.0
+    estimated_speed: float = 0.0
 
 
 @dataclass
 class Settings:
     overlay_enabled: bool = True
     only_cs2_focused: bool = True
+    show_estimated_speed: bool = False
     # Empty means "follow the primary display". Otherwise this stores the
     # stable QScreen name selected in Settings → General.
     overlay_screen: str = ""

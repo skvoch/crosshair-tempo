@@ -628,6 +628,13 @@ class SettingsWindow(FluentWindow):
         layout.insertLayout(layout.count() - 1, workspace)
 
     def _build_overlay(self, layout: QVBoxLayout) -> None:
+        debug = Panel("Debug", "Show the local movement-model estimate beside the crosshair.")
+        self.speed_debug = SwitchButton("Show estimated speed")
+        self.speed_debug.setChecked(self.settings.show_estimated_speed)
+        self.speed_debug.checkedChanged.connect(self._set_speed_debug)
+        debug.layout.addWidget(self.speed_debug)
+        layout.insertWidget(layout.count() - 1, debug)
+
         display = Panel("Display", "Choose which monitor shows the live crosshair.")
         self.monitor_picker = ComboBox()
         primary_screen = QGuiApplication.primaryScreen()
@@ -664,6 +671,10 @@ class SettingsWindow(FluentWindow):
         screen_name = self.monitor_picker.itemData(index)
         if screen_name:
             self.set_overlay_screen(screen_name)
+
+    def _set_speed_debug(self, value: bool) -> None:
+        self.settings.show_estimated_speed = value
+        self.save()
 
     def _setting_slider(self, label: str, value: int, handler, low: int, high: int, suffix: str, setting_key: str | None = None, preview_context: str = "standing") -> QWidget:
         container = QWidget()
