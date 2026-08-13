@@ -32,7 +32,7 @@ from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QP
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QApplication, QColorDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
-    QLineEdit, QMenu, QPushButton, QScrollArea, QStyle, QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget,
+    QLineEdit, QMenu, QPushButton, QScrollArea, QStackedWidget, QStyle, QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget,
 )
 from qfluentwidgets import FluentWindow, NavigationItemPosition, PushButton, Slider, SwitchButton, setTheme, Theme
 
@@ -304,6 +304,10 @@ class SettingsWindow(FluentWindow):
             QToolButton#leftNav:checked { background: #2c3538; border-left: 3px solid #28d8e8; }
             QToolButton#githubLink { border: 0; border-radius: 9px; padding: 7px; }
             QToolButton#githubLink:hover { background: #292d31; }
+            QPushButton#settingsSection { border: 0; border-radius: 7px; padding: 10px 12px; text-align: left; background: transparent; color: #cbd3da; font-size: 14px; }
+            QPushButton#settingsSection:hover { background: #2a2f34; }
+            QPushButton#settingsSection:checked { background: #3a4248; color: #f4f6f8; font-weight: 650; }
+            QLabel#settingsSectionLabel { color: #7f8a94; font-size: 12px; margin: 10px 0 2px 12px; }
             QWidget#profileCard { border: 2px solid transparent; border-radius: 7px; }
             QWidget#profileCard[selected="true"] { border: 2px solid #111315; }
             QPushButton#profile { text-align: left; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: #111315; font-weight: 650; }
@@ -352,17 +356,14 @@ class SettingsWindow(FluentWindow):
     def _add_pages(self) -> None:
         dashboard, layout = self._page("dashboard", "Crosshair Tempo", "Movement-reactive visualisation for counter-strafe practice · external crosshair")
         self._build_dashboard(layout)
-        movement, layout = self._page("movement", "Movement model", "Tune the input-only rifle velocity approximation.")
-        self._build_movement(layout)
         crosshair, layout = self._page("crosshair", "Crosshair", "Shape, colour and size update in the overlay immediately.")
         self._build_crosshair(layout)
-        overlay, layout = self._page("overlay", "Overlay", "Control visibility, focus scope and background behaviour.")
-        self._build_overlay(layout)
+        settings, layout = self._page("settings", "Settings", "Control overlay behaviour and movement model settings.")
+        self._build_settings(layout)
         for page, key, glyph, label in [
             (dashboard, "dashboard", "home", "Dashboard"),
             (crosshair, "crosshair", "crosshair", "Crosshair"),
-            (movement, "movement", "gauge", "Movement Model"),
-            (overlay, "overlay", "monitor", "Overlay"),
+            (settings, "settings", "settings", "Settings"),
         ]:
             page.setObjectName(key)
             self.pages[key] = page
@@ -373,15 +374,14 @@ class SettingsWindow(FluentWindow):
     def _build_left_icon_stack(self) -> None:
         self.navigationInterface.setMenuButtonVisible(False)
         stack = QWidget(self.navigationInterface)
-        stack.setGeometry(4, 54, 40, 192)
+        stack.setGeometry(4, 54, 40, 144)
         layout = QVBoxLayout(stack)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(7)
         for key, glyph, label in [
             ("dashboard", "home", "Dashboard"),
             ("crosshair", "crosshair", "Crosshair"),
-            ("movement", "gauge", "Movement Model"),
-            ("overlay", "monitor", "Overlay"),
+            ("settings", "settings", "Settings"),
         ]:
             button = QToolButton(stack)
             button.setObjectName("leftNav")
@@ -461,6 +461,56 @@ class SettingsWindow(FluentWindow):
         warning_layout.addWidget(warning_title)
         warning_layout.addWidget(warning_text)
         layout.insertWidget(layout.count() - 1, warning)
+
+    def _build_settings(self, layout: QVBoxLayout) -> None:
+        """A settings workspace with focused sections instead of one long page."""
+        workspace = QHBoxLayout()
+        workspace.setSpacing(20)
+        sidebar = Panel("Settings", "Choose what you want to configure.")
+        sidebar.setFixedWidth(250)
+        self.settings_section_buttons: list[QPushButton] = []
+        self.settings_sections = QStackedWidget()
+
+        for group, title, index in [
+            ("Overlay", "General", 0),
+            ("Movement", "Movement model", 1),
+        ]:
+            group_label = QLabel(group)
+            group_label.setObjectName("settingsSectionLabel")
+            sidebar.layout.addWidget(group_label)
+            button = QPushButton(title)
+            button.setObjectName("settingsSection")
+            button.setCheckable(True)
+            button.setChecked(index == 0)
+            button.clicked.connect(lambda _checked=False, section=index: self._activate_settings_section(section))
+            sidebar.layout.addWidget(button)
+            self.settings_section_buttons.append(button)
+        sidebar.layout.addStretch(1)
+
+        general = QWidget()
+        general_layout = QVBoxLayout(general)
+        general_layout.setContentsMargins(0, 0, 0, 0)
+        general_layout.setSpacing(16)
+        general_layout.addStretch(1)
+        self._build_overlay(general_layout)
+
+        movement = QWidget()
+        movement_layout = QVBoxLayout(movement)
+        movement_layout.setContentsMargins(0, 0, 0, 0)
+        movement_layout.setSpacing(16)
+        movement_layout.addStretch(1)
+        self._build_movement(movement_layout)
+
+        self.settings_sections.addWidget(general)
+        self.settings_sections.addWidget(movement)
+        workspace.addWidget(sidebar)
+        workspace.addWidget(self.settings_sections, 1)
+        layout.insertLayout(layout.count() - 1, workspace)
+
+    def _activate_settings_section(self, index: int) -> None:
+        self.settings_sections.setCurrentIndex(index)
+        for button_index, button in enumerate(self.settings_section_buttons):
+            button.setChecked(button_index == index)
 
     def _build_crosshair(self, layout: QVBoxLayout) -> None:
         workspace = QHBoxLayout()
