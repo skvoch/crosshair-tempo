@@ -26,7 +26,8 @@ else:
 
 from PySide6.QtCore import Qt, QPointF, QProcess, QRect, QRectF, QSize, QTimer, Signal
 
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPen
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPen
+from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QApplication, QColorDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QPushButton, QScrollArea, QStyle, QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget,
@@ -52,49 +53,108 @@ class Panel(QFrame):
 
 
 class CrosshairPreview(QWidget):
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: Settings, get_state) -> None:
         super().__init__()
         self.settings = settings
+        self.get_state = get_state
         self.setMinimumHeight(210)
         self.setObjectName("preview")
+        self.refresh_timer = QTimer(self)
+        self.refresh_timer.timeout.connect(self.update)
+        self.refresh_timer.start(16)
 
     def paintEvent(self, event) -> None:
         painter = QPainter(self)
         center = QPointF(self.width() / 2, self.height() / 2)
-        colour = QColor(self.settings.crosshair_color)
-        radius = max(12, self.settings.moving_size / 2)
+        state = self.get_state()
+        max_radius = self.settings.moving_size / 2
+        min_radius = self.settings.standing_size / 2
+        radius = min_radius + (max_radius - min_radius) * state.progress
+        if state.crouching:
+            crouch_idle_radius = min_radius * 0.65
+            crouch_moving_radius = min_radius * 1.15
+            radius = crouch_idle_radius + (crouch_moving_radius - crouch_idle_radius) * state.speed_ratio
+        if state.marker_active:
+            radius = min_radius * (0.65 if state.direction_change_marker else 1.0)
+        alpha = round(255 * self.settings.opacity / 100)
+        colour = QColor(self.settings.marker_color) if state.marker_active else QColor(self.settings.crosshair_color)
+        colour.setAlpha(alpha)
+        outline_colour = QColor("#0B0D0F")
+        outline_colour.setAlpha(alpha)
+        if state.marker_active:
+            marker_radius = max(4, self.settings.crosshair_thickness * 2)
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(colour, max(1, self.settings.crosshair_thickness)))
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QRectF(center.x() - marker_radius, center.y() - marker_radius, marker_radius * 2, marker_radius * 2))
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(colour)
+            dot_size = self._centred_dot_size(self.settings.center_dot_size, minimum=3)
+            dot_radius = dot_size / 2
+            painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))
+            return
         if self.settings.crosshair_shape == "cross":
-            outer = round(radius)
-            gap = min(outer - 2, self.settings.crosshair_gap)
+            # Keep the preview consistent with the overlay: fixed arms with a
+            # mid-movement gap so both size sliders remain visible here.
+            arm_length = max(round(self.settings.standing_size / 2), self.settings.crosshair_thickness + 2)
+            movement_spread = max(0, (self.settings.moving_size - self.settings.standing_size) / 2)
+            gap = self.settings.crosshair_gap + movement_spread * state.speed_ratio
+            outer = gap + arm_length
             pen = QPen(colour, self.settings.crosshair_thickness)
             pen.setCapStyle(Qt.PenCapStyle.SquareCap)
-            painter.setPen(pen)
             painter.save()
             painter.translate(center)
             painter.rotate(self.settings.crosshair_rotation)
             if self.settings.crosshair_rotation % 90:
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.drawLine(-outer, 0, -gap, 0)
-            painter.drawLine(gap, 0, outer, 0)
-            painter.drawLine(0, -outer, 0, -gap)
-            painter.drawLine(0, gap, 0, outer)
+            lines = ((-outer, 0, -gap, 0), (gap, 0, outer, 0), (0, -outer, 0, -gap), (0, gap, 0, outer))
+            if self.settings.crosshair_outline:
+                outline_pen = QPen(outline_colour, self.settings.crosshair_thickness + self.settings.crosshair_outline_thickness * 2)
+                outline_pen.setCapStyle(Qt.PenCapStyle.SquareCap)
+                painter.setPen(outline_pen)
+                for line in lines:
+                    painter.drawLine(*line)
+            painter.setPen(pen)
+            for line in lines:
+                painter.drawLine(*line)
             painter.restore()
+        elif self.settings.crosshair_shape == "dot":
+            dot_size = max(3, round(self.settings.standing_size + (self.settings.moving_size - self.settings.standing_size) * state.speed_ratio))
+            dot_size = self._centred_dot_size(dot_size)
+            dot_radius = dot_size / 2
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            if self.settings.crosshair_outline:
+                outline_size = dot_size + self.settings.crosshair_outline_thickness * 2
+                outline_radius = outline_size / 2
+                painter.setBrush(outline_colour)
+                painter.drawEllipse(QRectF(center.x() - outline_radius, center.y() - outline_radius, outline_size, outline_size))
+            painter.setBrush(colour)
+            painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))
         else:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            if self.settings.crosshair_outline:
+                painter.setPen(QPen(outline_colour, self.settings.crosshair_thickness + self.settings.crosshair_outline_thickness * 2))
+                painter.drawEllipse(QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2))
             painter.setPen(QPen(colour, self.settings.crosshair_thickness))
             painter.drawEllipse(QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2))
-        if self.settings.center_dot:
+        if self.settings.center_dot and self.settings.crosshair_shape != "dot":
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(colour)
             dot_size = self._centred_dot_size(self.settings.center_dot_size)
             dot_radius = dot_size / 2
+            if self.settings.crosshair_outline:
+                outline_size = dot_size + self.settings.crosshair_outline_thickness * 2
+                outline_radius = outline_size / 2
+                painter.setBrush(outline_colour)
+                painter.drawEllipse(QRectF(center.x() - outline_radius, center.y() - outline_radius, outline_size, outline_size))
             painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))
 
     @staticmethod
-    def _centred_dot_size(size: int) -> int:
+    def _centred_dot_size(size: int, minimum: int = 1) -> int:
         """Odd pixel widths have one unambiguous centre pixel."""
-        return max(1, round(size) | 1)
+        return max(minimum, round(size) | 1)
 
 
 class ProfileNameButton(QPushButton):
@@ -112,10 +172,52 @@ class ScrollSafeSlider(Slider):
         event.ignore()
 
 
+class ShapeChoiceButton(QPushButton):
+    """A visual shape picker rather than a row of ordinary text buttons."""
+
+    def __init__(self, title: str, shape: str) -> None:
+        super().__init__(title)
+        self.shape = shape
+        self.setCheckable(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFixedHeight(70)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        selected = self.isChecked()
+        background = QColor("#26373a" if selected else "#24282c")
+        border = QColor("#28d8e8" if selected else "#3a4046")
+        if self.underMouse() and not selected:
+            background = QColor("#2b3035")
+        painter.setPen(QPen(border, 2 if selected else 1))
+        painter.setBrush(background)
+        painter.drawRoundedRect(self.rect().adjusted(1, 1, -1, -1), 9, 9)
+
+        colour = QColor("#40dfed" if selected else "#b9c3cb")
+        pen = QPen(colour, 2)
+        pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+        painter.setPen(pen)
+        painter.setBrush(colour)
+        center = QPointF(self.width() / 2, 26)
+        if self.shape == "ring":
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QRectF(center.x() - 10, center.y() - 10, 20, 20))
+        elif self.shape == "cross":
+            for x1, y1, x2, y2 in ((-12, 0, -4, 0), (4, 0, 12, 0), (0, -12, 0, -4), (0, 4, 0, 12)):
+                painter.drawLine(center + QPointF(x1, y1), center + QPointF(x2, y2))
+        else:
+            painter.drawEllipse(QRectF(center.x() - 5, center.y() - 5, 10, 10))
+
+        painter.setPen(QColor("#f2f4f6" if selected else "#d7dce0"))
+        painter.drawText(QRect(0, 48, self.width(), 18), Qt.AlignmentFlag.AlignCenter, self.text())
+
+
 class SettingsWindow(FluentWindow):
-    def __init__(self, settings: Settings, toggle_overlay, save, sync_overlay, quit_app, restart_app, profile_store: CrosshairProfileStore) -> None:
+    def __init__(self, settings: Settings, get_crosshair_state, toggle_overlay, save, sync_overlay, quit_app, restart_app, profile_store: CrosshairProfileStore) -> None:
         super().__init__()
         self.settings = settings
+        self.get_crosshair_state = get_crosshair_state
         self.toggle_overlay = toggle_overlay
         self.save = save
         self.sync_overlay = sync_overlay
@@ -127,7 +229,7 @@ class SettingsWindow(FluentWindow):
         apply_profile(self.settings, self.active_profile)
         self.save()
         self.preview: CrosshairPreview | None = None
-        self.crosshair_controls: dict[str, tuple[Slider, QLabel, str]] = {}
+        self.crosshair_controls: dict[str, tuple[Slider, QLabel, str, QLabel]] = {}
         self.cross_only_widgets: list[QWidget] = []
         self.profile_list: QVBoxLayout | None = None
         self.movement_marker: QLabel | None = None
@@ -136,6 +238,9 @@ class SettingsWindow(FluentWindow):
         self.setWindowTitle("Crosshair Tempo")
         self.setWindowIcon(app_icon("crosshair-tempo"))
         self.resize(1280, 860)
+        # The crosshair editor is a three-column workspace. Below this width
+        # Qt clips the last slider captions after a shape changes visibility.
+        self.setMinimumSize(1050, 720)
         # The interface is intentionally a desktop control panel, not a
         # fullscreen workspace. Disable Windows maximise to preserve its layout.
         self.setWindowFlags(self.windowFlags() & ~Qt.WindowType.WindowMaximizeButtonHint)
@@ -149,6 +254,11 @@ class SettingsWindow(FluentWindow):
         super().changeEvent(event)
         if event.type() == event.Type.WindowStateChange and self.isMaximized():
             QTimer.singleShot(0, self.showNormal)
+
+    def resizeEvent(self, event) -> None:
+        super().resizeEvent(event)
+        if hasattr(self, "github_button"):
+            self.github_button.move(4, max(54, self.navigationInterface.height() - 48))
 
     def _apply_style(self) -> None:
         self.setStyleSheet("""
@@ -169,8 +279,8 @@ class SettingsWindow(FluentWindow):
             QToolButton#leftNav { border: 0; border-radius: 9px; padding: 7px; }
             QToolButton#leftNav:hover { background: #292d31; }
             QToolButton#leftNav:checked { background: #2c3538; border-left: 3px solid #28d8e8; }
-            QPushButton#shape { padding: 12px; border: 1px solid #3b4147; border-radius: 8px; background: #272b2f; color: #dce1e5; }
-            QPushButton#shape:checked { background: #5a4916; border: 1px solid #ffd14a; color: #ffe28a; }
+            QToolButton#githubLink { border: 0; border-radius: 9px; padding: 7px; }
+            QToolButton#githubLink:hover { background: #292d31; }
             QWidget#profileCard { border: 2px solid transparent; border-radius: 7px; }
             QWidget#profileCard[selected="true"] { border: 2px solid #111315; }
             QPushButton#profile { text-align: left; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: #111315; font-weight: 650; }
@@ -261,6 +371,15 @@ class SettingsWindow(FluentWindow):
             button.clicked.connect(lambda _checked=False, page_key=key: self._activate_page(page_key))
             self.side_buttons.append((key, button))
             layout.addWidget(button)
+        self.github_button = QToolButton(self.navigationInterface)
+        self.github_button.setObjectName("githubLink")
+        self.github_button.setToolTip("Open Crosshair Tempo on GitHub")
+        self.github_button.setIcon(app_icon("github"))
+        self.github_button.setIconSize(QSize(22, 22))
+        self.github_button.setFixedSize(40, 40)
+        self.github_button.clicked.connect(lambda: QDesktopServices.openUrl(QUrl("https://github.com/skvoch/crosshair-tempo")))
+        self.github_button.move(4, max(54, self.navigationInterface.height() - 48))
+        self.github_button.show()
 
     def _activate_page(self, key: str) -> None:
         self.stackedWidget.setCurrentWidget(self.pages[key])
@@ -357,11 +476,16 @@ class SettingsWindow(FluentWindow):
         editor = QVBoxLayout()
         top = QHBoxLayout()
         appearance = Panel("Appearance", "Choose the visual language of the live crosshair.")
-        shapes = QHBoxLayout()
-        self.ring_button = self._shape_button("Ring", "ring")
-        self.cross_button = self._shape_button("Cross", "cross")
-        shapes.addWidget(self.ring_button)
-        shapes.addWidget(self.cross_button)
+        shapes = QGridLayout()
+        shapes.setHorizontalSpacing(8)
+        shapes.setVerticalSpacing(8)
+        self.shape_buttons: dict[str, ShapeChoiceButton] = {}
+        for index, (title, shape) in enumerate((
+            ("Ring", "ring"),
+            ("Cross", "cross"),
+            ("Dot", "dot"),
+        )):
+            shapes.addWidget(self._shape_button(title, shape), 0, index)
         appearance.layout.addLayout(shapes)
         self.colour_button = PushButton("Choose colour")
         self.colour_button.clicked.connect(self._choose_colour)
@@ -372,27 +496,34 @@ class SettingsWindow(FluentWindow):
         appearance.layout.addWidget(self.marker_colour_button)
         self._refresh_marker_colour_button()
         preview_card = Panel("Live preview", "The same shape and colour used by the overlay.")
-        self.preview = CrosshairPreview(self.settings)
+        self.preview = CrosshairPreview(self.settings, self.get_crosshair_state)
         preview_card.layout.addWidget(self.preview)
         top.addWidget(appearance, 1)
         top.addWidget(preview_card, 2)
         editor.addLayout(top)
         sizing = Panel("Size & visibility")
-        sizing.layout.addWidget(self._setting_slider("Standing size", self.settings.standing_size, self._set_standing_size, 6, 32, " px", "standing_size"))
-        sizing.layout.addWidget(self._setting_slider("Moving size", self.settings.moving_size, self._set_moving_size, 24, 120, " px", "moving_size"))
+        sizing.layout.addWidget(self._setting_slider("Standing size", self.settings.standing_size, self._set_standing_size, 1 if self.settings.crosshair_shape == "dot" else 6, 32, " px", "standing_size"))
+        sizing.layout.addWidget(self._setting_slider("Moving size", self.settings.moving_size, self._set_moving_size, 3 if self.settings.crosshair_shape == "dot" else 24, 120, " px", "moving_size"))
         sizing.layout.addWidget(self._setting_slider("Opacity", self.settings.opacity, self._set_opacity, 20, 100, " %", "opacity"))
+        self.outline_switch = SwitchButton("Outline")
+        self.outline_switch.setChecked(self.settings.crosshair_outline)
+        self.outline_switch.checkedChanged.connect(self._set_crosshair_outline)
+        sizing.layout.addWidget(self.outline_switch)
+        sizing.layout.addWidget(self._setting_slider("Outline thickness", self.settings.crosshair_outline_thickness, self._set_crosshair_outline_thickness, 1, 4, " px", "crosshair_outline_thickness"))
         line_thickness = self._setting_slider("Line thickness", self.settings.crosshair_thickness, self._set_crosshair_thickness, 1, 8, " px", "crosshair_thickness")
         line_gap = self._setting_slider("Line gap", self.settings.crosshair_gap, self._set_crosshair_gap, 0, 30, " px", "crosshair_gap")
         rotation = self._rotation_slider()
         self.cross_only_widgets = [line_thickness, line_gap, rotation]
         for widget in self.cross_only_widgets:
             sizing.layout.addWidget(widget)
-        self._refresh_shape_dependent_controls()
         self.center_dot_switch = SwitchButton("Centre dot")
         self.center_dot_switch.setChecked(self.settings.center_dot)
         self.center_dot_switch.checkedChanged.connect(self._set_center_dot)
         sizing.layout.addWidget(self.center_dot_switch)
-        sizing.layout.addWidget(self._setting_slider("Dot size", self.settings.center_dot_size, self._set_center_dot_size, 1, 10, " px", "center_dot_size"))
+        centre_dot_size = self._setting_slider("Dot size", self.settings.center_dot_size, self._set_center_dot_size, 1, 10, " px", "center_dot_size")
+        self.centre_dot_widgets = [self.center_dot_switch, centre_dot_size]
+        sizing.layout.addWidget(centre_dot_size)
+        self._refresh_crosshair_controls()
         sizing_scroll = QScrollArea()
         sizing_scroll.setObjectName("crosshairSettingsScroll")
         sizing_scroll.setWidgetResizable(True)
@@ -422,7 +553,8 @@ class SettingsWindow(FluentWindow):
         box = QVBoxLayout(container)
         box.setContentsMargins(0, 8, 0, 5)
         header = QHBoxLayout()
-        header.addWidget(QLabel(label))
+        title_label = QLabel(label)
+        header.addWidget(title_label)
         header.addStretch()
         value_label = QLabel(f"{value}{suffix}")
         value_label.setObjectName("metricCaption")
@@ -432,7 +564,7 @@ class SettingsWindow(FluentWindow):
         slider.setValue(value)
         slider.valueChanged.connect(lambda current: (handler(current), value_label.setText(f"{current}{suffix}")))
         if setting_key:
-            self.crosshair_controls[setting_key] = (slider, value_label, suffix)
+            self.crosshair_controls[setting_key] = (slider, value_label, suffix, title_label)
         box.addLayout(header)
         box.addWidget(slider)
         return container
@@ -443,7 +575,8 @@ class SettingsWindow(FluentWindow):
         box = QVBoxLayout(container)
         box.setContentsMargins(0, 8, 0, 5)
         header = QHBoxLayout()
-        header.addWidget(QLabel("Rotation"))
+        title_label = QLabel("Rotation")
+        header.addWidget(title_label)
         header.addStretch()
         value_label = QLabel(f"{self.settings.crosshair_rotation}°")
         value_label.setObjectName("metricCaption")
@@ -464,23 +597,22 @@ class SettingsWindow(FluentWindow):
         box.addLayout(header)
         box.addWidget(slider)
         box.addLayout(labels)
-        self.crosshair_controls["crosshair_rotation"] = (slider, value_label, "°")
+        self.crosshair_controls["crosshair_rotation"] = (slider, value_label, "°", title_label)
         return container
 
-    def _shape_button(self, title: str, shape: str) -> QPushButton:
-        button = QPushButton(title)
-        button.setObjectName("shape")
-        button.setCheckable(True)
+    def _shape_button(self, title: str, shape: str) -> ShapeChoiceButton:
+        button = ShapeChoiceButton(title, shape)
         button.setChecked(self.settings.crosshair_shape == shape)
         button.clicked.connect(lambda: self._set_shape(shape))
+        self.shape_buttons[shape] = button
         return button
 
     def _set_shape(self, shape: str) -> None:
         self.settings.crosshair_shape = shape
-        self.ring_button.setChecked(shape == "ring")
-        self.cross_button.setChecked(shape == "cross")
+        for name, button in self.shape_buttons.items():
+            button.setChecked(name == shape)
         self._appearance_changed()
-        self._refresh_shape_dependent_controls()
+        self._refresh_crosshair_controls()
         self._update_preview()
 
     def _choose_colour(self) -> None:
@@ -560,16 +692,19 @@ class SettingsWindow(FluentWindow):
         self._update_preview()
 
     def _refresh_crosshair_controls(self) -> None:
-        self.ring_button.setChecked(self.settings.crosshair_shape == "ring")
-        self.cross_button.setChecked(self.settings.crosshair_shape == "cross")
+        for name, button in self.shape_buttons.items():
+            button.setChecked(self.settings.crosshair_shape == name)
         self._refresh_colour_button()
         self._refresh_marker_colour_button()
         self._refresh_movement_marker()
         self.center_dot_switch.blockSignals(True)
         self.center_dot_switch.setChecked(self.settings.center_dot)
         self.center_dot_switch.blockSignals(False)
+        self.outline_switch.blockSignals(True)
+        self.outline_switch.setChecked(self.settings.crosshair_outline)
+        self.outline_switch.blockSignals(False)
         self._refresh_shape_dependent_controls()
-        for key, (slider, label, suffix) in self.crosshair_controls.items():
+        for key, (slider, label, suffix, title_label) in self.crosshair_controls.items():
             value = getattr(self.settings, key)
             slider.blockSignals(True)
             if key == "crosshair_rotation":
@@ -578,12 +713,31 @@ class SettingsWindow(FluentWindow):
             else:
                 slider.setValue(value)
             slider.blockSignals(False)
+            # QFluent's custom handle is normally moved by its valueChanged
+            # signal. Signals are blocked above to avoid writing settings while
+            # loading a profile, so synchronise the handle explicitly.
+            slider._adjustHandlePos()
+            slider.update()
             label.setText(f"{value}{suffix}")
+        labels = {
+            "ring": ("Still diameter", "Movement diameter"),
+            "cross": ("Arm size", "Movement spread"),
+            "dot": ("Still dot size", "Movement dot size"),
+        }
+        standing_label, moving_label = labels.get(self.settings.crosshair_shape, labels["ring"])
+        self.crosshair_controls["standing_size"][3].setText(standing_label)
+        self.crosshair_controls["moving_size"][3].setText(moving_label)
 
     def _refresh_shape_dependent_controls(self) -> None:
-        is_cross = self.settings.crosshair_shape == "cross"
+        is_line_shape = self.settings.crosshair_shape == "cross"
         for widget in self.cross_only_widgets:
-            widget.setVisible(is_cross)
+            widget.setVisible(is_line_shape)
+        is_dot = self.settings.crosshair_shape == "dot"
+        for widget in self.centre_dot_widgets:
+            widget.setVisible(not is_dot)
+        if "standing_size" in self.crosshair_controls:
+            self.crosshair_controls["standing_size"][0].setMinimum(1 if is_dot else 6)
+            self.crosshair_controls["moving_size"][0].setMinimum(3 if is_dot else 24)
 
     def _new_profile(self) -> None:
         name = self._next_profile_name("New crosshair")
@@ -701,6 +855,8 @@ class SettingsWindow(FluentWindow):
     def _set_standing_size(self, value: int) -> None: self.settings.standing_size = value; self._appearance_changed(); self._update_preview()
     def _set_moving_size(self, value: int) -> None: self.settings.moving_size = value; self._appearance_changed(); self._update_preview()
     def _set_opacity(self, value: int) -> None: self.settings.opacity = value; self._appearance_changed()
+    def _set_crosshair_outline(self, value: bool) -> None: self.settings.crosshair_outline = value; self._appearance_changed(); self._update_preview()
+    def _set_crosshair_outline_thickness(self, value: int) -> None: self.settings.crosshair_outline_thickness = value; self._appearance_changed(); self._update_preview()
     def _set_crosshair_thickness(self, value: int) -> None: self.settings.crosshair_thickness = value; self._appearance_changed(); self._update_preview()
     def _set_crosshair_gap(self, value: int) -> None: self.settings.crosshair_gap = value; self._appearance_changed(); self._update_preview()
     def _set_crosshair_rotation(self, value: int) -> None: self.settings.crosshair_rotation = value; self._appearance_changed(); self._update_preview()
@@ -728,7 +884,7 @@ class CrosshairTempoApp:
         apply_profile(self.settings, selected_profile)
         self.engine = MovementFeedbackEngine(self.settings)
         self.overlay = CrosshairOverlay(self.engine.snapshot, self.settings)
-        self.window = SettingsWindow(self.settings, self.set_overlay_enabled, self._save_settings, self._sync_overlay_visibility, self.quit, self.restart, self.profile_store)
+        self.window = SettingsWindow(self.settings, self.engine.snapshot, self.set_overlay_enabled, self._save_settings, self._sync_overlay_visibility, self.quit, self.restart, self.profile_store)
         self.tracker = InputTracker(self.should_track)
         self.input_timer = QTimer()
         self.input_timer.timeout.connect(self._consume_input_events)

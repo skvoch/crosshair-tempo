@@ -16,7 +16,7 @@ TEMPLATES_PATH = Path(__file__).resolve().parent.parent / "templates"
 PROFILE_FIELDS = (
     "opacity", "moving_size", "standing_size", "crosshair_shape", "crosshair_color",
     "marker_color", "crosshair_rotation", "crosshair_thickness", "crosshair_gap",
-    "center_dot", "center_dot_size",
+    "crosshair_outline", "crosshair_outline_thickness", "center_dot", "center_dot_size",
 )
 ACCENT_COLOURS = ("#FFB84D", "#8BE28B", "#64C9FF", "#C99BFF", "#FF8EAE", "#64E0C0", "#F7D85C")
 SHARE_CODE_PREFIX = "SV1:"
@@ -36,6 +36,8 @@ class CrosshairProfile:
     crosshair_rotation: int
     crosshair_thickness: int
     crosshair_gap: int
+    crosshair_outline: bool
+    crosshair_outline_thickness: int
     center_dot: bool
     center_dot_size: int
 
@@ -69,6 +71,10 @@ class CrosshairProfileStore:
                 profile_defaults = asdict(CrosshairProfile.from_settings(profile_path.stem, profile_path.stem, fallback))
                 if "precision_color" in data and "marker_color" not in data:
                     data["marker_color"] = data["precision_color"]
+                if data.get("crosshair_shape") == "check":
+                    # Check was an experimental shape; keep old profiles
+                    # usable by falling back to the stable ring shape.
+                    data["crosshair_shape"] = "ring"
                 profile_defaults.update({key: value for key, value in data.items() if key in allowed})
                 profile = CrosshairProfile(**profile_defaults)
             except (OSError, TypeError, json.JSONDecodeError):
@@ -145,5 +151,7 @@ def import_share_code(code: str, fallback: Settings, profile_id: str, accent_col
     defaults = asdict(CrosshairProfile.from_settings(profile_id, name.strip(), fallback, accent_color))
     if "precision_color" in data and "marker_color" not in data:
         data["marker_color"] = data["precision_color"]
+    if data.get("crosshair_shape") == "check":
+        data["crosshair_shape"] = "ring"
     defaults.update({field: data[field] for field in PROFILE_FIELDS if field in data})
     return CrosshairProfile(**defaults)
