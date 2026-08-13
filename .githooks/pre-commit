@@ -1,0 +1,15 @@
+#!/bin/sh
+# Keep the README UI screenshot in the same commit as its UI changes.
+set -eu
+
+if [ -n "${CROSSHAIR_TEMPO_PYTHON:-}" ]; then
+    "$CROSSHAIR_TEMPO_PYTHON" scripts/capture_ui_screenshot.py
+elif command -v py >/dev/null 2>&1; then
+    py -3 scripts/capture_ui_screenshot.py
+elif command -v python >/dev/null 2>&1; then
+    python scripts/capture_ui_screenshot.py
+else
+    python3 scripts/capture_ui_screenshot.py
+fi
+
+git add assets/crosshair-customisation.png
