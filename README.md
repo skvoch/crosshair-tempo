@@ -21,7 +21,7 @@ Click the preview to open the full-quality video.
 
 ![Crosshair Tempo crosshair customisation screen](assets/crosshair-customisation.png)
 
-The screenshot is refreshed by the local Git pre-push hook. Run `scripts/install-hooks.ps1` once after cloning to enable it.
+The screenshot is refreshed and committed by the local Git pre-commit hook. Run `scripts/install-hooks.ps1` once after cloning to enable it.
 
 Create and save named crosshair profiles, then customise their shape, colours, size, opacity, rotation, line thickness, gap, and centre dot. Enable **CS2-only mode** to show the visualisation only while Counter-Strike 2 is focused.
 

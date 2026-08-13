@@ -1,5 +1,5 @@
 #!/bin/sh
-# Refresh the README UI screenshot before publishing a branch.
+# Keep the README UI screenshot in the same commit as its UI changes.
 set -eu
 
 if [ -n "${CROSSHAIR_TEMPO_PYTHON:-}" ]; then
@@ -12,7 +12,4 @@ else
     python3 scripts/capture_ui_screenshot.py
 fi
 
-if ! git diff --quiet -- assets/crosshair-customisation.png; then
-    echo >&2 "Crosshair screenshot was refreshed. Commit assets/crosshair-customisation.png, then push again."
-    exit 1
-fi
+git add assets/crosshair-customisation.png
