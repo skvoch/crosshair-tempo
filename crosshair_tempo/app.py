@@ -307,7 +307,6 @@ class SettingsWindow(FluentWindow):
             QPushButton#settingsSection { border: 0; border-radius: 7px; padding: 10px 12px; text-align: left; background: transparent; color: #cbd3da; font-size: 14px; }
             QPushButton#settingsSection:hover { background: #2a2f34; }
             QPushButton#settingsSection:checked { background: #3a4248; color: #f4f6f8; font-weight: 650; }
-            QLabel#settingsSectionLabel { color: #7f8a94; font-size: 12px; margin: 10px 0 2px 12px; }
             QWidget#profileCard { border: 2px solid transparent; border-radius: 7px; }
             QWidget#profileCard[selected="true"] { border: 2px solid #111315; }
             QPushButton#profile { text-align: left; padding: 8px 10px; border: 0; border-radius: 5px; background: transparent; color: #111315; font-weight: 650; }
@@ -471,13 +470,10 @@ class SettingsWindow(FluentWindow):
         self.settings_section_buttons: list[QPushButton] = []
         self.settings_sections = QStackedWidget()
 
-        for group, title, index in [
-            ("Overlay", "General", 0),
-            ("Movement", "Movement model", 1),
+        for title, index in [
+            ("General", 0),
+            ("Movement model", 1),
         ]:
-            group_label = QLabel(group)
-            group_label.setObjectName("settingsSectionLabel")
-            sidebar.layout.addWidget(group_label)
             button = QPushButton(title)
             button.setObjectName("settingsSection")
             button.setCheckable(True)
