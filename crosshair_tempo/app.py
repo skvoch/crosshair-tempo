@@ -938,7 +938,16 @@ class CrosshairTempoApp:
         self.tray.setContextMenu(menu)
         self.tray.setIcon(app_icon("crosshair-tempo"))
         self.tray.setToolTip("Crosshair Tempo")
+        self.tray.activated.connect(self._open_window_from_tray)
         self.tray.show()
+
+    def _open_window_from_tray(self, reason: QSystemTrayIcon.ActivationReason) -> None:
+        """Bring the control window back with a normal left-click in the tray."""
+        if reason not in {QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick}:
+            return
+        self.window.showNormal()
+        self.window.raise_()
+        self.window.activateWindow()
 
     def quit(self) -> None:
         self._save_settings()

@@ -1,5 +1,6 @@
 import tempfile
 import unittest
+import json
 from pathlib import Path
 
 from crosshair_tempo.crosshair_profiles import (
@@ -58,3 +59,12 @@ class CrosshairProfileStoreTests(unittest.TestCase):
     def test_bad_share_code_is_rejected(self) -> None:
         with self.assertRaises(ValueError):
             import_share_code("SV1:not-a-real-code", Settings(), "imported", "#FFB84D")
+
+    def test_legacy_check_profile_falls_back_to_ring(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory)
+            path.joinpath("legacy.json").write_text(json.dumps({
+                "id": "legacy", "name": "Legacy", "crosshair_shape": "check",
+            }), encoding="utf-8")
+            profile = CrosshairProfileStore(path).load_all(Settings())[0]
+            self.assertEqual(profile.crosshair_shape, "ring")
