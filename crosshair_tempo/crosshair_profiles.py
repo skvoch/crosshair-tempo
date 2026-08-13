@@ -16,7 +16,7 @@ TEMPLATES_PATH = Path(__file__).resolve().parent.parent / "templates"
 PROFILE_FIELDS = (
     "opacity", "moving_size", "standing_size", "crosshair_shape", "crosshair_color",
     "marker_color", "crosshair_rotation", "crosshair_thickness", "crosshair_gap",
-    "crosshair_outline", "crosshair_outline_thickness", "center_dot", "center_dot_size",
+    "crosshair_outline", "crosshair_outline_color", "crosshair_outline_thickness", "center_dot", "center_dot_size",
 )
 ACCENT_COLOURS = ("#FFB84D", "#8BE28B", "#64C9FF", "#C99BFF", "#FF8EAE", "#64E0C0", "#F7D85C")
 SHARE_CODE_PREFIX = "SV1:"
@@ -37,6 +37,7 @@ class CrosshairProfile:
     crosshair_thickness: int
     crosshair_gap: int
     crosshair_outline: bool
+    crosshair_outline_color: str
     crosshair_outline_thickness: int
     center_dot: bool
     center_dot_size: int

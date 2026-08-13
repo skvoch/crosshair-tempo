@@ -46,6 +46,7 @@ class CrosshairProfileStoreTests(unittest.TestCase):
             profile.crosshair_color = "#BADA55"
             profile.crosshair_rotation = 45
             profile.crosshair_outline = True
+            profile.crosshair_outline_color = "#16202A"
             profile.crosshair_outline_thickness = 3
             code = export_share_code(profile)
             restored = import_share_code(code, Settings(), "imported", "#FFB84D")
@@ -54,6 +55,7 @@ class CrosshairProfileStoreTests(unittest.TestCase):
             self.assertEqual(restored.crosshair_color, "#BADA55")
             self.assertEqual(restored.crosshair_rotation, 45)
             self.assertTrue(restored.crosshair_outline)
+            self.assertEqual(restored.crosshair_outline_color, "#16202A")
             self.assertEqual(restored.crosshair_outline_thickness, 3)
 
     def test_bad_share_code_is_rejected(self) -> None:
