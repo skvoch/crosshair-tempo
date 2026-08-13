@@ -27,7 +27,11 @@ def main() -> int:
     # Do not use a developer's local settings or profiles: the README image
     # must stay identical for every clone and every push.
     with tempfile.TemporaryDirectory() as directory:
-        settings = Settings(active_crosshair_profile="cross")
+        settings = Settings(
+            active_crosshair_profile="cross",
+            only_cs2_focused=True,
+            overlay_enabled=False,
+        )
         profiles = CrosshairProfileStore(Path(directory))
         engine = MovementFeedbackEngine(settings)
         window = SettingsWindow(
