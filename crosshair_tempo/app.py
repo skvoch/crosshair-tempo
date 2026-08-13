@@ -172,6 +172,26 @@ class ScrollSafeSlider(Slider):
         event.ignore()
 
 
+class RotationTickLabels(QWidget):
+    """Draw labels on the exact centres used by QFluent's slider handle."""
+
+    def __init__(self, slider: Slider, angles: tuple[int, ...]) -> None:
+        super().__init__()
+        self.slider = slider
+        self.angles = angles
+        self.setFixedHeight(20)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setPen(QColor("#9aa3ad"))
+        count = max(1, len(self.angles) - 1)
+        radius = self.slider.handle.width() / 2
+        usable_width = max(0, self.width() - radius * 2)
+        for index, angle in enumerate(self.angles):
+            x = radius + usable_width * index / count
+            painter.drawText(QRectF(x - 28, 0, 56, self.height()), Qt.AlignmentFlag.AlignCenter, f"{angle}°")
+
+
 class ShapeChoiceButton(QPushButton):
     """A visual shape picker rather than a row of ordinary text buttons."""
 
@@ -587,16 +607,9 @@ class SettingsWindow(FluentWindow):
         slider.setTickInterval(1)
         slider.setValue(min(range(len(angles)), key=lambda index: abs(angles[index] - self.settings.crosshair_rotation)))
         slider.valueChanged.connect(lambda index: (self._set_crosshair_rotation(angles[index]), value_label.setText(f"{angles[index]}°")))
-        labels = QHBoxLayout()
-        labels.setContentsMargins(0, 0, 0, 0)
-        for angle in angles:
-            tick_label = QLabel(f"{angle}°")
-            tick_label.setObjectName("metricCaption")
-            tick_label.setAlignment(Qt.AlignmentFlag.AlignHCenter)
-            labels.addWidget(tick_label, 1)
         box.addLayout(header)
         box.addWidget(slider)
-        box.addLayout(labels)
+        box.addWidget(RotationTickLabels(slider, angles))
         self.crosshair_controls["crosshair_rotation"] = (slider, value_label, "°", title_label)
         return container
 
