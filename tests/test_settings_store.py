@@ -10,10 +10,11 @@ class SettingsStoreTests(unittest.TestCase):
     def test_round_trip_preserves_input_scope(self):
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "settings.json"
-            save_settings(Settings(only_cs2_focused=True, crosshair_shape="cross"), path)
+            save_settings(Settings(only_cs2_focused=True, crosshair_shape="cross", overlay_screen="\\\\.\\DISPLAY2"), path)
             restored = load_settings(path)
             self.assertTrue(restored.only_cs2_focused)
             self.assertEqual(restored.crosshair_shape, "cross")
+            self.assertEqual(restored.overlay_screen, "\\\\.\\DISPLAY2")
 
     def test_invalid_file_uses_defaults(self):
         with tempfile.TemporaryDirectory() as directory:

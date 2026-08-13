@@ -82,6 +82,10 @@ class CrosshairSettingsWindowTests(unittest.TestCase):
         self.assertTrue(self.window.settings_section_buttons[1].isChecked())
         self.assertFalse(self.window.settings_section_buttons[0].isChecked())
 
+    def test_general_settings_lists_available_monitors(self):
+        self.window._activate_page("settings")
+        self.assertGreaterEqual(self.window.monitor_picker.count(), 1)
+
 
 if __name__ == "__main__":
     unittest.main()
