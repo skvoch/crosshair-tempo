@@ -1,0 +1,16 @@
+{
+  "id": "cross-45",
+  "name": "Cross 45",
+  "accent_color": "#8BE28B",
+  "opacity": 100,
+  "moving_size": 63,
+  "standing_size": 12,
+  "crosshair_shape": "cross",
+  "crosshair_color": "#f800d7",
+  "marker_color": "#43d297",
+  "crosshair_rotation": 45,
+  "crosshair_thickness": 2,
+  "crosshair_gap": 18,
+  "center_dot": true,
+  "center_dot_size": 2
+}

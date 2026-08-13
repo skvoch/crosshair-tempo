@@ -1,0 +1,16 @@
+{
+  "id": "ring",
+  "name": "Ring",
+  "accent_color": "#64C9FF",
+  "opacity": 100,
+  "moving_size": 63,
+  "standing_size": 12,
+  "crosshair_shape": "ring",
+  "crosshair_color": "#f83200",
+  "marker_color": "#55ff00",
+  "crosshair_rotation": 45,
+  "crosshair_thickness": 2,
+  "crosshair_gap": 18,
+  "center_dot": true,
+  "center_dot_size": 2
+}
