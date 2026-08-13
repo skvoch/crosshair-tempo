@@ -108,6 +108,19 @@ class MovementFeedbackEngineTests(unittest.TestCase):
         self.engine.on_key_press("S", 1.3)
         self.assertEqual(self.engine.snapshot(1.4).movement, MovementState.OVERLAP)
 
+    def test_movement_marker_expires_after_hold_period(self):
+        self.engine.on_key_press("A", 1.0)
+        self.engine.snapshot(1.3)
+        self.engine.on_key_release("A", 1.3)
+        self.assertTrue(self.engine.snapshot(1.65).marker_active)
+        self.assertFalse(self.engine.snapshot(1.75).marker_active)
+
+    def test_unknown_key_does_not_change_velocity(self):
+        self.engine.on_key_press("SPACE", 1.0)
+        self.engine.snapshot(1.3)
+        self.assertEqual(self.engine.velocity, 0.0)
+        self.assertEqual(self.engine.forward_velocity, 0.0)
+
 
 if __name__ == "__main__":
     unittest.main()
