@@ -70,6 +70,18 @@ class CrosshairSettingsWindowTests(unittest.TestCase):
         self.assertGreater(slider.handle.x(), 0)
         self.assertLess(slider.handle.x(), slider.width())
 
+    def test_settings_workspace_switches_between_general_and_movement(self):
+        self.window._activate_page("settings")
+        self.assertEqual(self.window.settings_sections.currentIndex(), 0)
+        self.assertTrue(self.window.settings_section_buttons[0].isChecked())
+
+        self.window._activate_settings_section(1)
+        self.application.processEvents()
+
+        self.assertEqual(self.window.settings_sections.currentIndex(), 1)
+        self.assertTrue(self.window.settings_section_buttons[1].isChecked())
+        self.assertFalse(self.window.settings_section_buttons[0].isChecked())
+
 
 if __name__ == "__main__":
     unittest.main()
