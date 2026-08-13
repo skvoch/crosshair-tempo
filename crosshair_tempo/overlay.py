@@ -50,6 +50,8 @@ class CrosshairOverlay(QWidget):
         alpha = round(255 * self.settings.opacity / 100)
         colour = QColor(self.settings.marker_color) if state.marker_active else QColor(self.settings.crosshair_color)
         colour.setAlpha(alpha)
+        outline_colour = QColor("#0B0D0F")
+        outline_colour.setAlpha(alpha)
         painter = QPainter(self)
         # Both the outline and dot use this exact logical centre. QPoint-based
         # overloads round independently on even-sized fullscreen surfaces.
@@ -73,29 +75,62 @@ class CrosshairOverlay(QWidget):
             painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))
             return
         if self.settings.crosshair_shape == "cross":
-            outer = max(round(radius), self.settings.crosshair_thickness + 2)
-            gap = min(outer - self.settings.crosshair_thickness, self.settings.crosshair_gap)
+            # Cross arms stay fixed; movement is represented by widening the
+            # gap between them. Standing size controls arm length, while
+            # Moving size controls the maximum extra spread.
+            arm_length = max(round(self.settings.standing_size / 2), self.settings.crosshair_thickness + 2)
+            movement_spread = max(0, (self.settings.moving_size - self.settings.standing_size) / 2)
+            gap = self.settings.crosshair_gap + movement_spread * state.speed_ratio
+            outer = gap + arm_length
             pen = QPen(colour, self.settings.crosshair_thickness)
             pen.setCapStyle(Qt.PenCapStyle.SquareCap)
-            painter.setPen(pen)
             painter.save()
             painter.translate(center)
             painter.rotate(self.settings.crosshair_rotation)
             if self.settings.crosshair_rotation % 90:
                 painter.setRenderHint(QPainter.RenderHint.Antialiasing)
-            painter.drawLine(-outer, 0, -gap, 0)
-            painter.drawLine(gap, 0, outer, 0)
-            painter.drawLine(0, -outer, 0, -gap)
-            painter.drawLine(0, gap, 0, outer)
+            lines = ((-outer, 0, -gap, 0), (gap, 0, outer, 0), (0, -outer, 0, -gap), (0, gap, 0, outer))
+            if self.settings.crosshair_outline:
+                outline_pen = QPen(outline_colour, self.settings.crosshair_thickness + self.settings.crosshair_outline_thickness * 2)
+                outline_pen.setCapStyle(Qt.PenCapStyle.SquareCap)
+                painter.setPen(outline_pen)
+                for line in lines:
+                    painter.drawLine(*line)
+            painter.setPen(pen)
+            for line in lines:
+                painter.drawLine(*line)
             painter.restore()
+        elif self.settings.crosshair_shape == "dot":
+            # The dot is a compact alternative: movement expands the dot
+            # itself instead of introducing a ring or a line gap.
+            dot_size = max(3, round(self.settings.standing_size + (self.settings.moving_size - self.settings.standing_size) * state.speed_ratio))
+            dot_size = self._centred_dot_size(dot_size, minimum=3)
+            dot_radius = dot_size / 2
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(Qt.PenStyle.NoPen)
+            if self.settings.crosshair_outline:
+                outline_size = dot_size + self.settings.crosshair_outline_thickness * 2
+                outline_radius = outline_size / 2
+                painter.setBrush(outline_colour)
+                painter.drawEllipse(QRectF(center.x() - outline_radius, center.y() - outline_radius, outline_size, outline_size))
+            painter.setBrush(colour)
+            painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))
         else:
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            if self.settings.crosshair_outline:
+                painter.setPen(QPen(outline_colour, self.settings.crosshair_thickness + self.settings.crosshair_outline_thickness * 2))
+                painter.drawEllipse(QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2))
             painter.setPen(QPen(colour, self.settings.crosshair_thickness))
             painter.drawEllipse(QRectF(center.x() - radius, center.y() - radius, radius * 2, radius * 2))
-        if self.settings.center_dot:
+        if self.settings.center_dot and self.settings.crosshair_shape != "dot":
             painter.setRenderHint(QPainter.RenderHint.Antialiasing)
             painter.setPen(Qt.PenStyle.NoPen)
             painter.setBrush(colour)
             dot_size = self._centred_dot_size(self.settings.center_dot_size)
             dot_radius = dot_size / 2
+            if self.settings.crosshair_outline:
+                outline_size = dot_size + self.settings.crosshair_outline_thickness * 2
+                outline_radius = outline_size / 2
+                painter.setBrush(outline_colour)
+                painter.drawEllipse(QRectF(center.x() - outline_radius, center.y() - outline_radius, outline_size, outline_size))
             painter.drawEllipse(QRectF(center.x() - dot_radius, center.y() - dot_radius, dot_size, dot_size))

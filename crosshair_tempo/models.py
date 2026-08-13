@@ -42,6 +42,8 @@ class Settings:
     crosshair_rotation: int = 0
     crosshair_thickness: int = 2
     crosshair_gap: int = 7
+    crosshair_outline: bool = False
+    crosshair_outline_thickness: int = 1
     center_dot: bool = False
     center_dot_size: int = 3
     active_crosshair_profile: str = "default"
