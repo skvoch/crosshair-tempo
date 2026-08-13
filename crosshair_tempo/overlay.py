@@ -9,6 +9,17 @@ from PySide6.QtWidgets import QWidget
 from .models import CrosshairState, Settings
 
 
+def select_overlay_screen(screens, primary_screen, configured_name: str):
+    """Resolve the configured display, with a safe primary-display fallback."""
+    if not screens:
+        return None
+    if configured_name:
+        selected = next((screen for screen in screens if screen.name() == configured_name), None)
+        if selected is not None:
+            return selected
+    return primary_screen or screens[0]
+
+
 class CrosshairOverlay(QWidget):
     def __init__(self, get_state, settings: Settings) -> None:
         super().__init__(None)
@@ -17,12 +28,42 @@ class CrosshairOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
         self.setWindowFlags(Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint | Qt.WindowType.Tool)
-        screen = QGuiApplication.primaryScreen().geometry()
-        self.setGeometry(screen)
+        self._screen = None
+        application = QGuiApplication.instance()
+        if application is not None:
+            application.screenAdded.connect(lambda _screen: self.sync_screen())
+            application.screenRemoved.connect(lambda _screen: self.sync_screen())
+        self.sync_screen()
         self._make_click_through()
         self._timer = QTimer(self)
         self._timer.timeout.connect(self.update)
         self._timer.start(16)
+
+    def _target_screen(self):
+        screens = QGuiApplication.screens()
+        return select_overlay_screen(screens, QGuiApplication.primaryScreen(), self.settings.overlay_screen)
+
+    def sync_screen(self) -> None:
+        """Resize the click-through window to the selected display.
+
+        A missing saved display is expected after unplugging a monitor, so it
+        intentionally falls back to the current primary display.
+        """
+        screen = self._target_screen()
+        if screen is None:
+            return
+        if screen is not self._screen:
+            if self._screen is not None:
+                try:
+                    self._screen.geometryChanged.disconnect(self._on_screen_geometry_changed)
+                except (RuntimeError, TypeError):
+                    pass
+            self._screen = screen
+            screen.geometryChanged.connect(self._on_screen_geometry_changed)
+        self.setGeometry(screen.geometry())
+
+    def _on_screen_geometry_changed(self, geometry) -> None:
+        self.setGeometry(geometry)
 
     def _make_click_through(self) -> None:
         hwnd = int(self.winId())

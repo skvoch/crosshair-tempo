@@ -28,13 +28,13 @@ else:
 
 from PySide6.QtCore import QObject, Qt, QPointF, QProcess, QRect, QRectF, QSize, QTimer, Signal, Slot
 
-from PySide6.QtGui import QAction, QColor, QDesktopServices, QIcon, QPainter, QPen
+from PySide6.QtGui import QAction, QColor, QDesktopServices, QGuiApplication, QIcon, QPainter, QPen
 from PySide6.QtCore import QUrl
 from PySide6.QtWidgets import (
     QApplication, QColorDialog, QFrame, QGridLayout, QHBoxLayout, QLabel,
     QLineEdit, QMenu, QPushButton, QScrollArea, QStackedWidget, QStyle, QSystemTrayIcon, QToolButton, QVBoxLayout, QWidget,
 )
-from qfluentwidgets import FluentWindow, NavigationItemPosition, PushButton, Slider, SwitchButton, setTheme, Theme
+from qfluentwidgets import ComboBox, FluentWindow, NavigationItemPosition, PushButton, Slider, SwitchButton, setTheme, Theme
 
 
 class Panel(QFrame):
@@ -236,7 +236,7 @@ class ShapeChoiceButton(QPushButton):
 
 
 class SettingsWindow(FluentWindow):
-    def __init__(self, settings: Settings, get_crosshair_state, toggle_overlay, save, sync_overlay, quit_app, restart_app, profile_store: CrosshairProfileStore, set_autostart=None) -> None:
+    def __init__(self, settings: Settings, get_crosshair_state, toggle_overlay, save, sync_overlay, quit_app, restart_app, profile_store: CrosshairProfileStore, set_autostart=None, set_overlay_screen=None) -> None:
         super().__init__()
         self.settings = settings
         self.get_crosshair_state = get_crosshair_state
@@ -246,6 +246,7 @@ class SettingsWindow(FluentWindow):
         self.quit_app = quit_app
         self.restart_app = restart_app
         self.set_autostart = set_autostart or (lambda _enabled: None)
+        self.set_overlay_screen = set_overlay_screen or (lambda _screen_name: None)
         self.profile_store = profile_store
         self.profiles = self.profile_store.load_all(settings)
         self.active_profile = next((profile for profile in self.profiles if profile.id == settings.active_crosshair_profile), self.profiles[0])
@@ -610,6 +611,21 @@ class SettingsWindow(FluentWindow):
         layout.insertLayout(layout.count() - 1, workspace)
 
     def _build_overlay(self, layout: QVBoxLayout) -> None:
+        display = Panel("Display", "Choose which monitor shows the live crosshair.")
+        self.monitor_picker = ComboBox()
+        primary_screen = QGuiApplication.primaryScreen()
+        selected_name = self.settings.overlay_screen or (primary_screen.name() if primary_screen else "")
+        for index, screen in enumerate(QGuiApplication.screens(), start=1):
+            geometry = screen.geometry()
+            suffix = " · Primary" if screen is primary_screen else ""
+            name = screen.name() or f"Display {index}"
+            self.monitor_picker.addItem(f"{name} · {geometry.width()}×{geometry.height()}{suffix}", screen.name())
+            if screen.name() == selected_name:
+                self.monitor_picker.setCurrentIndex(self.monitor_picker.count() - 1)
+        self.monitor_picker.currentIndexChanged.connect(self._set_overlay_screen)
+        display.layout.addWidget(self.monitor_picker)
+        layout.insertWidget(layout.count() - 1, display)
+
         startup = Panel("Startup", "Optionally open Crosshair Tempo when you sign in to Windows.")
         self.autostart = SwitchButton("Start with Windows")
         self.autostart.setChecked(self.settings.start_with_windows)
@@ -624,6 +640,13 @@ class SettingsWindow(FluentWindow):
         restart = PushButton("Restart Crosshair Tempo")
         restart.clicked.connect(self.restart_app)
         layout.insertWidget(layout.count() - 1, restart)
+
+    def _set_overlay_screen(self, index: int) -> None:
+        if index < 0:
+            return
+        screen_name = self.monitor_picker.itemData(index)
+        if screen_name:
+            self.set_overlay_screen(screen_name)
 
     def _setting_slider(self, label: str, value: int, handler, low: int, high: int, suffix: str, setting_key: str | None = None) -> QWidget:
         container = QWidget()
@@ -968,7 +991,7 @@ class CrosshairTempoApp(QObject):
         apply_profile(self.settings, selected_profile)
         self.engine = MovementFeedbackEngine(self.settings)
         self.overlay = CrosshairOverlay(self.engine.snapshot, self.settings)
-        self.window = SettingsWindow(self.settings, self.engine.snapshot, self.set_overlay_enabled, self._save_settings, self._sync_overlay_visibility, self.quit, self.restart, self.profile_store, self.set_autostart)
+        self.window = SettingsWindow(self.settings, self.engine.snapshot, self.set_overlay_enabled, self._save_settings, self._sync_overlay_visibility, self.quit, self.restart, self.profile_store, self.set_autostart, self.set_overlay_screen)
         self.tracker = InputTracker(self.should_track)
         self.tracker.input_event.connect(self._consume_input_event)
         self.focus_timer = QTimer()
@@ -1008,6 +1031,11 @@ class CrosshairTempoApp(QObject):
         self.window.autostart.blockSignals(True)
         self.window.autostart.setChecked(self.settings.start_with_windows)
         self.window.autostart.blockSignals(False)
+
+    def set_overlay_screen(self, screen_name: str) -> None:
+        self.settings.overlay_screen = screen_name
+        self.overlay.sync_screen()
+        self._save_settings()
 
     def _sync_overlay_visibility(self) -> None:
         self.overlay.setVisible(self.settings.overlay_enabled and self.should_track())

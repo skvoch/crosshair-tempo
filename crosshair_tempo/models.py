@@ -32,6 +32,9 @@ class CrosshairState:
 class Settings:
     overlay_enabled: bool = True
     only_cs2_focused: bool = True
+    # Empty means "follow the primary display". Otherwise this stores the
+    # stable QScreen name selected in Settings → General.
+    overlay_screen: str = ""
     start_with_windows: bool = False
     hotkey: str = "F8"
     opacity: int = 100
