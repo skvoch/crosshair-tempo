@@ -621,8 +621,6 @@ class SettingsWindow(FluentWindow):
         button.clicked.connect(self.hide)
         hotkey.layout.addWidget(button)
         layout.insertWidget(layout.count() - 1, hotkey)
-        notes = Panel("Compatibility", "Use CS2 in Fullscreen Windowed mode. The overlay is click-through and never receives mouse input.")
-        layout.insertWidget(layout.count() - 1, notes)
         restart = PushButton("Restart Crosshair Tempo")
         restart.clicked.connect(self.restart_app)
         layout.insertWidget(layout.count() - 1, restart)
